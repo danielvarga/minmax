@@ -23,7 +23,6 @@ from keras.models import Model
 from keras.datasets import cifar10
 import numpy as np
 import os
-from keras.engine.topology import Layer
 
 # Training parameters
 batch_size = 32  # orig paper trained all networks with batch_size=128
@@ -114,27 +113,6 @@ def lr_schedule(epoch):
     return lr
 
 
-class MinMax(Layer):
-    def __init__(self, **kwargs):
-        super(MinMax, self).__init__(**kwargs)
-
-    def call(self, x):
-        s = x.shape
-        d = s[-1]
-        assert d % 2 == 0
-        print("shape", s)
-        p = x[...,:d//2]
-        q = x[...,d//2:]
-        mn = K.minimum(p, q)
-        mx = K.maximum(p, q)
-        out = K.concatenate([mn, mx], axis=-1)
-        print("out shape", out.shape)
-        return out
-
-    def compute_output_shape(self, input_shape):
-        return input_shape
-
-
 def resnet_layer(inputs,
                  num_filters=16,
                  kernel_size=3,
@@ -169,18 +147,12 @@ def resnet_layer(inputs,
         x = conv(x)
         if batch_normalization:
             x = BatchNormalization()(x)
-        if activation == 'minmax':
-            print("minmax path")
-            x = MinMax()(x)
-        elif activation is not None:
+        if activation is not None:
             x = Activation(activation)(x)
     else:
         if batch_normalization:
             x = BatchNormalization()(x)
-        if activation == 'minmax':
-            print("minmax path")
-            x = MinMax()(x)
-        elif activation is not None:
+        if activation is not None:
             x = Activation(activation)(x)
         x = conv(x)
     return x
@@ -221,7 +193,7 @@ def resnet_v1(input_shape, depth, num_classes=10):
     num_res_blocks = int((depth - 2) / 6)
 
     inputs = Input(shape=input_shape)
-    x = resnet_layer(inputs=inputs, activation='minmax')
+    x = resnet_layer(inputs=inputs)
     # Instantiate the stack of residual units
     for stack in range(3):
         for res_block in range(num_res_blocks):
@@ -230,7 +202,7 @@ def resnet_v1(input_shape, depth, num_classes=10):
                 strides = 2  # downsample
             y = resnet_layer(inputs=x,
                              num_filters=num_filters,
-                             strides=strides, activation='minmax')
+                             strides=strides)
             y = resnet_layer(inputs=y,
                              num_filters=num_filters,
                              activation=None)
@@ -244,7 +216,7 @@ def resnet_v1(input_shape, depth, num_classes=10):
                                  activation=None,
                                  batch_normalization=False)
             x = keras.layers.add([x, y])
-            x = MinMax()(x) # Daniel
+            x = Activation('relu')(x)
         num_filters *= 2
 
     # Add classifier on top.
